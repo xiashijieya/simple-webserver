@@ -1,6 +1,6 @@
-#include <cstdio>
+#include "logger.h"
 
 int main() {
-    std::printf("SimpleWebServer\n");
+    LOG_INFO("SimpleWebServer starting");
     return 0;
 }
