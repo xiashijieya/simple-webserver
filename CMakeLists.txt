@@ -19,6 +19,7 @@ add_executable(webserver
     src/main.cpp
     src/logger.cpp
     src/socket_ops.cpp
+    src/buffer.cpp
 )
 
 if(WIN32)
