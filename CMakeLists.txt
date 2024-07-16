@@ -21,6 +21,7 @@ add_executable(webserver
     src/socket_ops.cpp
     src/buffer.cpp
     src/server.cpp
+    src/http_request.cpp
 )
 
 if(WIN32)
