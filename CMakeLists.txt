@@ -22,6 +22,8 @@ add_executable(webserver
     src/buffer.cpp
     src/server.cpp
     src/http_request.cpp
+    src/http_response.cpp
+    src/http_connection.cpp
 )
 
 if(WIN32)

@@ -1,41 +1,32 @@
 #include <winsock2.h>
 #include <windows.h>
 
-#include <string>
+#include <cstdint>
 
-#include "buffer.h"
+#include "http_connection.h"
 #include "iterative_server.h"
 #include "logger.h"
 #include "socket_ops.h"
 
 namespace {
 
-BOOL WINAPI ctrl_handler(DWORD) {
-    sws::request_stop();
-    return TRUE;
+sws::HttpResponse dispatch(const sws::HttpRequest& request) {
+    LOG_INFO("%s %s", request.method().c_str(), request.path().c_str());
+
+    sws::HttpResponse response(200);
+    response.set_content_type("text/plain");
+    response.set_body("hello from SimpleWebServer\n");
+    return response;
 }
 
 void handle_connection(SOCKET fd) {
-    sws::set_rcv_timeout(fd, 10000);
+    sws::HttpConnection connection(fd, dispatch);
+    connection.serve();
+}
 
-    sws::Buffer in;
-    int n = in.read_fd(fd);
-    if (n > 0) {
-        std::string request = in.retrieve_all_as_string();
-        LOG_INFO("recv %d bytes from %s: %.40s",
-                 n, sws::peer_addr(fd).c_str(), request.c_str());
-
-        std::string body = "hello from SimpleWebServer\n";
-        std::string response =
-            "HTTP/1.1 200 OK\r\n"
-            "Content-Type: text/plain\r\n"
-            "Content-Length: " + std::to_string(body.size()) + "\r\n"
-            "Connection: close\r\n"
-            "\r\n" + body;
-        send(fd, response.data(), static_cast<int>(response.size()), 0);
-    }
-
-    sws::close_socket(fd);
+BOOL WINAPI ctrl_handler(DWORD) {
+    sws::request_stop();
+    return TRUE;
 }
 
 } // namespace
