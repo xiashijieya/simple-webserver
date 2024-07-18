@@ -1,25 +1,46 @@
 #include "http_connection.h"
 
 #include "logger.h"
+#include "server.h"
 #include "socket_ops.h"
 
 namespace sws {
+
+namespace {
+const int k_idle_timeout_ms = 10000;
+const size_t k_max_requests_per_connection = 1000;
+}
 
 HttpConnection::HttpConnection(SOCKET fd, request_callback callback)
     : fd_(fd), callback_(callback) {
 }
 
 void HttpConnection::serve() {
-    set_rcv_timeout(fd_, 10000);
+    set_rcv_timeout(fd_, k_idle_timeout_ms);
 
     HttpRequest request;
-    if (!recv_request(&request)) {
-        close_socket(fd_);
-        return;
+    size_t request_count = 0;
+
+    while (!is_stopping()) {
+        if (!recv_request(&request)) {
+            close_socket(fd_);
+            return;
+        }
+
+        ++request_count;
+        bool keep_alive = request.keep_alive()
+                          && request_count < k_max_requests_per_connection;
+
+        HttpResponse response = callback_(request);
+        send_response(response, keep_alive);
+
+        if (!keep_alive) {
+            close_socket(fd_);
+            return;
+        }
+        request.reset();
     }
 
-    HttpResponse response = callback_(request);
-    send_response(response, false);
     close_socket(fd_);
 }
 
@@ -42,7 +63,9 @@ bool HttpConnection::recv_request(HttpRequest* request) {
         }
         if (n == SOCKET_ERROR) {
             int err = socket_error();
-            if (!error_timeout(err)) {
+            if (error_timeout(err)) {
+                LOG_DEBUG("idle connection timeout");
+            } else {
                 LOG_WARN("recv failed %d from %s", err, peer_addr(fd_).c_str());
             }
             return false;
