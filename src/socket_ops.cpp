@@ -23,6 +23,11 @@ void set_non_blocking(SOCKET fd) {
     ioctlsocket(fd, FIONBIO, &mode);
 }
 
+void set_blocking(SOCKET fd) {
+    unsigned long mode = 0;
+    ioctlsocket(fd, FIONBIO, &mode);
+}
+
 void set_reuse_addr(SOCKET fd) {
     int on = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,

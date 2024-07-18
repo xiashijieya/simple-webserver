@@ -16,6 +16,7 @@ HttpConnection::HttpConnection(SOCKET fd, request_callback callback)
 }
 
 void HttpConnection::serve() {
+    set_blocking(fd_);
     set_rcv_timeout(fd_, k_idle_timeout_ms);
 
     HttpRequest request;

@@ -21,6 +21,7 @@ private:
 
 SOCKET create_listen_socket(uint16_t port, bool non_blocking, int backlog = 128);
 void set_non_blocking(SOCKET fd);
+void set_blocking(SOCKET fd);
 void set_reuse_addr(SOCKET fd);
 void set_rcv_timeout(SOCKET fd, int timeout_ms);
 void close_socket(SOCKET fd);
