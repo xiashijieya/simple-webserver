@@ -72,6 +72,9 @@ bool HttpRequest::parse_request_line(const std::string& line) {
     if (version.compare(0, 5, "HTTP/") != 0) return false;
     if (path.empty() || path[0] != '/') return false;
 
+    size_t query = path.find('?');
+    if (query != std::string::npos) path = path.substr(0, query);
+
     method_ = method;
     path_ = path;
     version_ = version;

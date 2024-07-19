@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <title>SimpleWebServer</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <main>
+        <h1>SimpleWebServer</h1>
+        <p>一个用于学习 HTTP 服务器基本组成的练习项目。</p>
+
+        <h2>试一试</h2>
+        <ul>
+            <li><code>GET /hello</code> —— 返回一句问候</li>
+            <li><code>POST /echo</code> —— 原样返回请求体</li>
+            <li><code>GET /index.html</code> —— 静态文件，也就是当前页面</li>
+        </ul>
+
+        <h2>一次请求的旅程</h2>
+        <pre>TCP accept
+   |
+   v
+Buffer 收字节 -> HttpRequest 解析 -> Router 路由
+                                   |
+                     静态文件 / hello / echo
+                                   v
+                      HttpResponse 序列化 -> send</pre>
+    </main>
+</body>
+</html>

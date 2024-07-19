@@ -9,6 +9,7 @@
 #include "logger.h"
 #include "router.h"
 #include "socket_ops.h"
+#include "static_file_handler.h"
 
 namespace {
 
@@ -36,14 +37,6 @@ sws::Router build_router() {
     return router;
 }
 
-void handle_connection(SOCKET fd, const sws::Router* router) {
-    sws::HttpConnection connection(
-        fd, [router](const sws::HttpRequest& request) {
-            return router->route(request);
-        });
-    connection.serve();
-}
-
 BOOL WINAPI ctrl_handler(DWORD) {
     sws::request_stop();
     return TRUE;
@@ -58,10 +51,20 @@ int main() {
     SetConsoleCtrlHandler(ctrl_handler, TRUE);
 
     sws::Router router = build_router();
+    sws::StaticFileHandler files("wwwroot");
+
+    sws::connection_handler handler = [&](SOCKET fd) {
+        sws::HttpConnection connection(
+            fd, [&](const sws::HttpRequest& request) {
+                sws::HttpResponse response = router.route(request);
+                if (response.status() == 404) response = files.serve(request);
+                return response;
+            });
+        connection.serve();
+    };
 
     uint16_t port = 8080;
-    sws::IterativeServer server(
-        port, [&router](SOCKET fd) { handle_connection(fd, &router); });
+    sws::IterativeServer server(port, handler);
     LOG_INFO("press ctrl c to stop");
     server.run();
     return 0;
