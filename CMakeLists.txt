@@ -26,6 +26,7 @@ add_executable(webserver
     src/http_connection.cpp
     src/router.cpp
     src/static_file_handler.cpp
+    src/thread_pool.cpp
 )
 
 if(WIN32)

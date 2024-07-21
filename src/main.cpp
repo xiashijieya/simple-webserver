@@ -2,17 +2,27 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <cstdlib>
+#include <iostream>
 #include <memory>
 #include <string>
+#include <thread>
 
 #include "http_connection.h"
+#include "iterative_server.h"
 #include "logger.h"
+#include "pool_server.h"
 #include "router.h"
 #include "socket_ops.h"
 #include "static_file_handler.h"
 #include "thread_server.h"
 
 namespace {
+
+void print_usage() {
+    std::cerr << "usage: webserver [port] [model] [thread_count]\n"
+              << "  model: iterative | thread | pool (default pool)\n";
+}
 
 std::shared_ptr<sws::Router> build_router() {
     std::shared_ptr<sws::Router> router(new sws::Router());
@@ -55,6 +65,24 @@ build_handler(const std::shared_ptr<sws::Router>& router,
     return handler;
 }
 
+std::unique_ptr<sws::Server>
+create_server(const std::string& model, uint16_t port, size_t thread_count,
+              sws::connection_handler* handler) {
+    if (model == "iterative") {
+        return std::unique_ptr<sws::Server>(
+            new sws::IterativeServer(port, *handler));
+    }
+    if (model == "thread") {
+        return std::unique_ptr<sws::Server>(
+            new sws::ThreadServer(port, *handler));
+    }
+    if (model == "pool") {
+        return std::unique_ptr<sws::Server>(
+            new sws::PoolServer(port, *handler, thread_count));
+    }
+    return std::unique_ptr<sws::Server>();
+}
+
 BOOL WINAPI ctrl_handler(DWORD) {
     sws::request_stop();
     return TRUE;
@@ -62,7 +90,30 @@ BOOL WINAPI ctrl_handler(DWORD) {
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    uint16_t port = 8080;
+    std::string model = "pool";
+    size_t thread_count = std::thread::hardware_concurrency();
+    if (thread_count == 0) thread_count = 4;
+
+    if (argc >= 2) {
+        long value = std::strtol(argv[1], NULL, 10);
+        if (value <= 0 || value > 65535) {
+            print_usage();
+            return 1;
+        }
+        port = static_cast<uint16_t>(value);
+    }
+    if (argc >= 3) model = argv[2];
+    if (argc >= 4) {
+        long value = std::strtol(argv[3], NULL, 10);
+        if (value <= 0) {
+            print_usage();
+            return 1;
+        }
+        thread_count = static_cast<size_t>(value);
+    }
+
     sws::WinsockInit winsock;
     if (!winsock.ok()) return 1;
 
@@ -73,9 +124,16 @@ int main() {
         new sws::StaticFileHandler("wwwroot"));
     std::shared_ptr<sws::connection_handler> handler = build_handler(router, files);
 
-    uint16_t port = 8080;
-    sws::ThreadServer server(port, *handler);
+    std::unique_ptr<sws::Server> server =
+        create_server(model, port, thread_count, handler.get());
+    if (!server) {
+        print_usage();
+        return 1;
+    }
+
+    LOG_INFO("model %s  port %u  threads %u",
+             model.c_str(), port, static_cast<unsigned>(thread_count));
     LOG_INFO("press ctrl c to stop");
-    server.run();
+    server->run();
     return 0;
 }
