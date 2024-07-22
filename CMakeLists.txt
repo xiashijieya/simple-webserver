@@ -27,8 +27,9 @@ add_executable(webserver
     src/router.cpp
     src/static_file_handler.cpp
     src/thread_pool.cpp
+    src/iocp_server.cpp
 )
 
 if(WIN32)
-    target_link_libraries(webserver PRIVATE ws2_32)
+    target_link_libraries(webserver PRIVATE ws2_32 mswsock)
 endif()

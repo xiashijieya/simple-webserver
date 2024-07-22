@@ -15,7 +15,7 @@ public:
     Server(uint16_t port, connection_handler handler);
     virtual ~Server();
 
-    void run();
+    virtual void run();
     void stop();
 
 protected:

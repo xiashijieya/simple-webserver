@@ -9,6 +9,7 @@
 #include <thread>
 
 #include "http_connection.h"
+#include "iocp_server.h"
 #include "iterative_server.h"
 #include "logger.h"
 #include "pool_server.h"
@@ -21,7 +22,7 @@ namespace {
 
 void print_usage() {
     std::cerr << "usage: webserver [port] [model] [thread_count]\n"
-              << "  model: iterative | thread | pool (default pool)\n";
+              << "  model: iterative | thread | pool | iocp (default pool)\n";
 }
 
 std::shared_ptr<sws::Router> build_router() {
@@ -48,38 +49,46 @@ std::shared_ptr<sws::Router> build_router() {
     return router;
 }
 
-std::shared_ptr<sws::connection_handler>
-build_handler(const std::shared_ptr<sws::Router>& router,
-              const std::shared_ptr<sws::StaticFileHandler>& files) {
-    std::shared_ptr<sws::connection_handler> handler(
-        new sws::connection_handler(
-            [router, files](SOCKET fd) {
-                sws::HttpConnection connection(
-                    fd, [router, files](const sws::HttpRequest& request) {
-                        sws::HttpResponse response = router->route(request);
-                        if (response.status() == 404) response = files->serve(request);
-                        return response;
-                    });
-                connection.serve();
+std::shared_ptr<sws::request_callback>
+build_dispatch(const std::shared_ptr<sws::Router>& router,
+               const std::shared_ptr<sws::StaticFileHandler>& files) {
+    std::shared_ptr<sws::request_callback> dispatch(
+        new sws::request_callback(
+            [router, files](const sws::HttpRequest& request) {
+                sws::HttpResponse response = router->route(request);
+                if (response.status() == 404) response = files->serve(request);
+                return response;
             }));
-    return handler;
+    return dispatch;
 }
 
 std::unique_ptr<sws::Server>
-create_server(const std::string& model, uint16_t port, size_t thread_count,
-              sws::connection_handler* handler) {
-    if (model == "iterative") {
+create_server(const std::string& model, uint16_t port, size_t worker_count,
+              const std::shared_ptr<sws::request_callback>& dispatch) {
+    if (model == "iterative" || model == "thread" || model == "pool") {
+        std::shared_ptr<sws::connection_handler> handler(
+            new sws::connection_handler([dispatch](SOCKET fd) {
+                sws::HttpConnection connection(fd, *dispatch);
+                connection.serve();
+            }));
+
+        if (model == "iterative") {
+            return std::unique_ptr<sws::Server>(
+                new sws::IterativeServer(port, *handler));
+        }
+        if (model == "thread") {
+            return std::unique_ptr<sws::Server>(
+                new sws::ThreadServer(port, *handler));
+        }
         return std::unique_ptr<sws::Server>(
-            new sws::IterativeServer(port, *handler));
+            new sws::PoolServer(port, *handler, worker_count));
     }
-    if (model == "thread") {
+
+    if (model == "iocp") {
         return std::unique_ptr<sws::Server>(
-            new sws::ThreadServer(port, *handler));
+            new sws::IocpServer(port, *dispatch, worker_count));
     }
-    if (model == "pool") {
-        return std::unique_ptr<sws::Server>(
-            new sws::PoolServer(port, *handler, thread_count));
-    }
+
     return std::unique_ptr<sws::Server>();
 }
 
@@ -93,8 +102,8 @@ BOOL WINAPI ctrl_handler(DWORD) {
 int main(int argc, char** argv) {
     uint16_t port = 8080;
     std::string model = "pool";
-    size_t thread_count = std::thread::hardware_concurrency();
-    if (thread_count == 0) thread_count = 4;
+    size_t worker_count = std::thread::hardware_concurrency();
+    if (worker_count == 0) worker_count = 4;
 
     if (argc >= 2) {
         long value = std::strtol(argv[1], NULL, 10);
@@ -111,7 +120,7 @@ int main(int argc, char** argv) {
             print_usage();
             return 1;
         }
-        thread_count = static_cast<size_t>(value);
+        worker_count = static_cast<size_t>(value);
     }
 
     sws::WinsockInit winsock;
@@ -122,17 +131,17 @@ int main(int argc, char** argv) {
     std::shared_ptr<sws::Router> router = build_router();
     std::shared_ptr<sws::StaticFileHandler> files(
         new sws::StaticFileHandler("wwwroot"));
-    std::shared_ptr<sws::connection_handler> handler = build_handler(router, files);
+    std::shared_ptr<sws::request_callback> dispatch = build_dispatch(router, files);
 
     std::unique_ptr<sws::Server> server =
-        create_server(model, port, thread_count, handler.get());
+        create_server(model, port, worker_count, dispatch);
     if (!server) {
         print_usage();
         return 1;
     }
 
-    LOG_INFO("model %s  port %u  threads %u",
-             model.c_str(), port, static_cast<unsigned>(thread_count));
+    LOG_INFO("model %s  port %u  workers %u",
+             model.c_str(), port, static_cast<unsigned>(worker_count));
     LOG_INFO("press ctrl c to stop");
     server->run();
     return 0;
