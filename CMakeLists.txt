@@ -39,6 +39,11 @@ endif()
 add_executable(webserver src/main.cpp)
 target_link_libraries(webserver PRIVATE sws_core)
 
+add_executable(bench bench/bench.cpp)
+if(WIN32)
+    target_link_libraries(bench PRIVATE ws2_32)
+endif()
+
 enable_testing()
 configure_file(tests/test_config.h.in
                ${CMAKE_BINARY_DIR}/tests/test_config.h)
