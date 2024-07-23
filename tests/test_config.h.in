@@ -1,0 +1,6 @@
+#ifndef SWS_TEST_CONFIG_H
+#define SWS_TEST_CONFIG_H
+
+#define SWS_TEST_FIXTURES_DIR "@CMAKE_SOURCE_DIR@/tests/fixtures"
+
+#endif

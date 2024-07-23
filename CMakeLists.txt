@@ -15,8 +15,9 @@ endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-add_executable(webserver
-    src/main.cpp
+include_directories(${CMAKE_SOURCE_DIR}/src)
+
+set(SWS_CORE_SRCS
     src/logger.cpp
     src/socket_ops.cpp
     src/buffer.cpp
@@ -30,6 +31,32 @@ add_executable(webserver
     src/iocp_server.cpp
 )
 
+add_library(sws_core STATIC ${SWS_CORE_SRCS})
 if(WIN32)
-    target_link_libraries(webserver PRIVATE ws2_32 mswsock)
+    target_link_libraries(sws_core PUBLIC ws2_32 mswsock)
 endif()
+
+add_executable(webserver src/main.cpp)
+target_link_libraries(webserver PRIVATE sws_core)
+
+enable_testing()
+configure_file(tests/test_config.h.in
+               ${CMAKE_BINARY_DIR}/tests/test_config.h)
+
+set(SWS_TESTS
+    test_buffer
+    test_parser
+    test_router
+)
+
+foreach(test_name ${SWS_TESTS})
+    add_executable(${test_name}
+        tests/${test_name}.cpp
+        tests/mini_test.cpp
+    )
+    target_include_directories(${test_name} PRIVATE
+        ${CMAKE_BINARY_DIR}/tests
+    )
+    target_link_libraries(${test_name} PRIVATE sws_core)
+    add_test(NAME ${test_name} COMMAND ${test_name})
+endforeach()
