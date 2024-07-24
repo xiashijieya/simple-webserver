@@ -100,21 +100,37 @@ size_t response_size(const std::string& data) {
     return data.size() >= total ? total : 0;
 }
 
-bool read_one_response(SOCKET fd, std::string* leftover) {
+enum ReadResult {
+    read_ok,
+    read_closed,
+    read_error
+};
+
+bool peer_reset() {
+    int err = WSAGetLastError();
+    return err == WSAECONNRESET || err == WSAECONNABORTED
+           || err == WSAESHUTDOWN || err == WSAETIMEDOUT;
+}
+
+ReadResult read_one_response(SOCKET fd, std::string* leftover) {
     while (response_size(*leftover) == 0) {
         char buf[4096];
         int n = recv(fd, buf, sizeof(buf), 0);
-        if (n <= 0) return false;
-        leftover->append(buf, static_cast<size_t>(n));
+        if (n > 0) {
+            leftover->append(buf, static_cast<size_t>(n));
+            continue;
+        }
+        if (n == 0) return read_closed;
+        return peer_reset() ? read_closed : read_error;
     }
     leftover->erase(0, response_size(*leftover));
-    return true;
+    return read_ok;
 }
 
-bool one_request(const Config& config, SOCKET fd, std::string* leftover) {
+ReadResult one_request(const Config& config, SOCKET fd, std::string* leftover) {
     const char* request = config.new_connection ? k_close_request : k_request;
     if (!send_all(fd, request, static_cast<int>(std::strlen(request)))) {
-        return false;
+        return peer_reset() ? read_closed : read_error;
     }
     return read_one_response(fd, leftover);
 }
@@ -134,40 +150,47 @@ void worker(const Config& config, Stats* stats, uint64_t* elapsed_ticks) {
     }
 
     for (int i = 0; i < config.requests_per_thread; ++i) {
-        SOCKET fd = persistent;
-        if (config.new_connection) {
-            fd = connect_to(config);
+        ReadResult result = read_error;
+        uint64_t req_begin = 0;
+        uint64_t req_end = 0;
+
+        while (true) {
+            SOCKET fd = persistent;
+            if (config.new_connection) {
+                fd = connect_to(config);
+                if (fd == INVALID_SOCKET) {
+                    result = read_error;
+                    break;
+                }
+            }
             if (fd == INVALID_SOCKET) {
-                ++stats->errors;
-                continue;
+                result = read_error;
+                break;
+            }
+
+            req_begin = now_ticks();
+            result = one_request(config, fd, &leftover);
+            req_end = now_ticks();
+
+            if (result == read_ok && config.new_connection) closesocket(fd);
+            if (result != read_closed) break;
+
+            if (!config.new_connection) {
+                closesocket(persistent);
+                leftover.clear();
+                persistent = connect_to(config);
+            } else {
+                closesocket(fd);
+                leftover.clear();
             }
         }
-
-        uint64_t req_begin = now_ticks();
-        bool ok = one_request(config, fd, &leftover);
-        uint64_t req_end = now_ticks();
 
         LARGE_INTEGER freq;
         QueryPerformanceFrequency(&freq);
         stats->latencies_ms.push_back(
             ticks_to_ms(req_begin, req_end,
                         static_cast<double>(freq.QuadPart)));
-
-        if (!ok) {
-            ++stats->errors;
-            if (config.new_connection) {
-                closesocket(fd);
-                fd = connect_to(config);
-                leftover.clear();
-            } else {
-                closesocket(persistent);
-                leftover.clear();
-                persistent = connect_to(config);
-            }
-            continue;
-        }
-
-        if (config.new_connection) closesocket(fd);
+        if (result != read_ok) ++stats->errors;
     }
 
     if (!config.new_connection && persistent != INVALID_SOCKET) {
