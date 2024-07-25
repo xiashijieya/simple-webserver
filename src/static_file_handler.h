@@ -13,6 +13,7 @@ public:
     explicit StaticFileHandler(const std::string& root);
 
     HttpResponse serve(const HttpRequest& request) const;
+    const std::string& root() const { return root_; }
 
 private:
     std::string mime_type(const std::string& path) const;
