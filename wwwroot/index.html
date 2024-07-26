@@ -15,7 +15,11 @@
             <li><code>GET /hello</code> —— 返回一句问候</li>
             <li><code>POST /echo</code> —— 原样返回请求体</li>
             <li><code>GET /index.html</code> —— 静态文件，也就是当前页面</li>
+            <li><button onclick="window.location.href='/hello'">这是一个按钮</button></li>
         </ul>
+
+        <text>输入你的昵称：<input type="text" id="name"></input></text>
+        <button onclick="window.location.href='/hello_with_name?name=' + document.getElementById('name').value">提交</button></text>
 
         <h2>一次请求的旅程</h2>
         <pre>TCP accept

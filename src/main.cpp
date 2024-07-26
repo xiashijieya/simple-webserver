@@ -46,6 +46,15 @@ std::shared_ptr<sws::Router> build_router() {
             return response;
         });
 
+    router->add_route("GET", "/hello_with_name",
+        [](const sws::HttpRequest& request) {
+            sws::HttpResponse response(200);
+            std::string name = request.get_query("name");
+            if (name.empty()) name = "stranger";
+            response.set_content_type("text/plain; charset=utf-8");
+            response.set_body("hello " + name + "\n");
+            return response;
+        });
     return router;
 }
 

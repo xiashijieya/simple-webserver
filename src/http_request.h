@@ -29,6 +29,7 @@ public:
     const std::string& version() const { return version_; }
     const std::string& body() const { return body_; }
     std::string get_header(const std::string& key) const;
+    std::string get_query(const std::string& key) const;
     size_t content_length() const;
     bool keep_alive() const;
 
@@ -41,6 +42,7 @@ private:
     std::string path_;
     std::string version_;
     std::map<std::string, std::string> headers_;
+    std::map<std::string, std::string> query_;
     std::string body_;
     bool headers_done_;
 };

@@ -21,6 +21,42 @@ std::string trim(const std::string& s) {
     return s.substr(begin, end - begin + 1);
 }
 
+int hex_value(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+// url地址的解析规则
+// https://www.bilibili.com/video/xxxx?trackid=web_pegasus_0.router-web-pegasus-2479516-gfll4.1790260401874.217#sectionxxxxxx
+// scheme |      host      |   path   |                            query                                      |  section3   |
+// query 里的+要转成空格, %开头的是两个16进制描述的一个字符
+// URL 只支持 ASCII 码传输。
+// URL encoding 编码字符到能传输的格式。
+// URL encoding 使用 % 加上两个十六进制数编码不支持的字符。
+// URL 不能含有空格，URL encoding 替换空格成 %20。
+std::string url_decode(const std::string& s) {
+    std::string result;
+    for (size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == '+') {
+            result += ' ';
+        } else if (s[i] == '%' && i + 2 < s.size()) {
+            int high = hex_value(s[i + 1]);
+            int low = hex_value(s[i + 2]);
+            if (high < 0 || low < 0) {
+                result += s[i];
+            } else {
+                result += static_cast<char>(high * 16 + low);
+                i += 2;
+            }
+        } else {
+            result += s[i];
+        }
+    }
+    return result;
+}
+
 } // namespace
 
 HttpRequest::HttpRequest() : headers_done_(false) {
@@ -31,6 +67,7 @@ void HttpRequest::reset() {
     path_.clear();
     version_.clear();
     headers_.clear();
+    query_.clear();
     body_.clear();
     headers_done_ = false;
 }
@@ -72,12 +109,32 @@ bool HttpRequest::parse_request_line(const std::string& line) {
     if (version.compare(0, 5, "HTTP/") != 0) return false;
     if (path.empty() || path[0] != '/') return false;
 
+    std::string query_string;
     size_t query = path.find('?');
-    if (query != std::string::npos) path = path.substr(0, query);
+    if (query != std::string::npos) {
+        query_string = path.substr(query + 1);
+        path = path.substr(0, query);
+    }
 
     method_ = method;
     path_ = path;
     version_ = version;
+
+    size_t pair_begin = 0;
+    while (pair_begin <= query_string.size()) {
+        size_t pair_end = query_string.find('&', pair_begin);
+        if (pair_end == std::string::npos) pair_end = query_string.size();
+
+        std::string pair = query_string.substr(pair_begin, pair_end - pair_begin);
+        size_t eq = pair.find('=');
+        std::string key = eq == std::string::npos ? pair : pair.substr(0, eq);
+        std::string value = eq == std::string::npos ? "" : pair.substr(eq + 1);
+        if (!key.empty()) query_[url_decode(key)] = url_decode(value);
+
+        if (pair_end == query_string.size()) break;
+        pair_begin = pair_end + 1;
+    }
+
     return true;
 }
 
@@ -97,6 +154,11 @@ std::string HttpRequest::get_header(const std::string& key) const {
     std::map<std::string, std::string>::const_iterator it =
         headers_.find(to_lower(key));
     return it == headers_.end() ? "" : it->second;
+}
+
+std::string HttpRequest::get_query(const std::string& key) const {
+    std::map<std::string, std::string>::const_iterator it = query_.find(key);
+    return it == query_.end() ? "" : it->second;
 }
 
 size_t HttpRequest::content_length() const {

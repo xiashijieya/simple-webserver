@@ -84,6 +84,25 @@ TEST_CASE(parser_strips_query_string) {
     CHECK_EQ(request.path(), std::string("/search"));
 }
 
+TEST_CASE(parser_reads_query_params) {
+    Buffer buf = buffer_with(
+        "GET /hello_with_name?name=Tom&city=NY HTTP/1.1\r\n\r\n");
+    HttpRequest request;
+    CHECK_EQ(request.parse(&buf), parse_complete);
+    CHECK_EQ(request.path(), std::string("/hello_with_name"));
+    CHECK_EQ(request.get_query("name"), std::string("Tom"));
+    CHECK_EQ(request.get_query("city"), std::string("NY"));
+    CHECK_EQ(request.get_query("missing"), std::string(""));
+}
+
+TEST_CASE(parser_decodes_query_params) {
+    Buffer buf = buffer_with(
+        "GET /hi?who=hello+world%21 HTTP/1.1\r\n\r\n");
+    HttpRequest request;
+    CHECK_EQ(request.parse(&buf), parse_complete);
+    CHECK_EQ(request.get_query("who"), std::string("hello world!"));
+}
+
 TEST_CASE(parser_rejects_oversized_body) {
     Buffer buf = buffer_with(
         "POST / HTTP/1.1\r\nContent-Length: 99999999999\r\n\r\n");
